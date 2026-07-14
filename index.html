@@ -119,9 +119,9 @@ canvas#cv{position:absolute;inset:0;width:100%;height:100%;}
         <button class="gcard" data-g="abc" style="--bd:#FFD9D9;--sh:#E89A9A"><div class="gicon">🔤</div><div class="gname">알파벳 콕콕</div><div class="gdesc">듣고 알맞은 글자를 콕!</div></button>
         <button class="gcard" data-g="listen" style="--bd:#D6F5D6;--sh:#93D693"><div class="gicon">👂</div><div class="gname">픽처 리스닝</div><div class="gdesc">듣고 알맞은 그림을 콕!</div></button>
         <button class="gcard" data-g="phonics" style="--bd:#FFE39A;--sh:#E0BE5E"><div class="gicon">🐹</div><div class="gname">파닉스 두더지</div><div class="gdesc">시작하는 소리를 찾아요!</div></button>
+        <button class="gcard" data-g="spell" style="--bd:#FFD9D9;--sh:#F0A8B8"><div class="gicon">🔡</div><div class="gname">스펠링 콕콕</div><div class="gdesc">M-I-L-K 순서대로 콕!</div></button>
         <button class="gcard" data-g="color" style="--bd:#E5D4FF;--sh:#B79AE8"><div class="gicon">🎨</div><div class="gname">컬러 점프</div><div class="gdesc">색깔 이름 듣고 콕!</div></button>
         <button class="gcard" data-g="simon" style="--bd:#C7E8FF;--sh:#8FC4E8"><div class="gicon">🙆</div><div class="gname">바디파츠 사이먼</div><div class="gdesc">Touch your head! 몸으로!</div></button>
-        <button class="gcard" data-g="beat" style="--bd:#FFD9D9;--sh:#F0A8B8"><div class="gicon">🎵</div><div class="gname">리스닝 리듬</div><div class="gdesc">단어 들으며 박자에 맞춰 콕!</div></button>
       </div>
       <div class="hub-foot">🔒 영상은 저장되지 않고 기기 안에서만 사용돼요<br>
         <a class="insta" href="https://www.instagram.com/kimju.zip" target="_blank" rel="noopener">
@@ -320,7 +320,7 @@ function hexA(hex,a){ const n=parseInt(hex.slice(1),16); return 'rgba('+((n>>16)
 /* ---------- 개인 최고기록(localStorage) ---------- */
 const BEST_CFG={
   abc:{unit:'문제',dir:'max'}, listen:{unit:'문제',dir:'max'}, phonics:{unit:'문제',dir:'max'},
-  color:{unit:'문제',dir:'max'}, simon:{unit:'개',dir:'max'}, beat:{unit:'번',dir:'max'}
+  color:{unit:'문제',dir:'max'}, simon:{unit:'개',dir:'max'}, spell:{unit:'단어',dir:'max'}
 };
 function bestKey(k){ return 'kep_best_'+k; }
 function getBest(k){ try{ const v=localStorage.getItem(bestKey(k)); return v==null?null:parseFloat(v); }catch(e){ return null; } }
@@ -760,117 +760,81 @@ GAME.simon=(()=>{
   };
 })();
 
-/* ---------- 🎵 리스닝 리듬 ---------- */
-GAME.beat=(()=>{
+/* ---------- 🔤 스펠링 콕콕(알파벳 순서대로 터치) ---------- */
+GAME.spell=(()=>{
   const G={};
-  const BPM=100, BEAT=60/BPM, LEAD=BEAT*4;
-  const ROUND_DUR=45;
-  const LANES=[
-    {emoji:'🍎',word:'apple',col:'#E85A5A',freq:523.25},
-    {emoji:'🐶',word:'dog',col:'#E8C23E',freq:587.33},
-    {emoji:'🚗',word:'car',col:'#3E9BDB',freq:659.25},
-    {emoji:'⭐',word:'star',col:'#5AB86E',freq:783.99}
-  ];
-  const PATTERN=[0,1,2,3,1,2,0,3,2,1,3,0,1,3,0,2];
-  const HITWIN=0.26;
-  function laneX(i){ return map.W*((i+0.5)/4); }
-  function hitY(){ return map.H*0.62; }
-  function topY(){ return map.H*0.14; }
-  function tone(freq){
-    if(!actx) return;
-    const o=actx.createOscillator(), o2=actx.createOscillator(), g=actx.createGain(), g2=actx.createGain();
-    o.type='triangle'; o.frequency.value=freq;
-    o2.type='sine'; o2.frequency.value=freq*2; g2.gain.value=0.1;
-    o2.connect(g2); g2.connect(g);
-    g.gain.value=0; o.connect(g); g.connect(actx.destination);
-    const t=actx.currentTime;
-    g.gain.linearRampToValueAtTime(0.34,t+0.012);
-    g.gain.exponentialRampToValueAtTime(0.001,t+0.4);
-    o.start(t); o.stop(t+0.42); o2.start(t); o2.stop(t+0.42);
+  const WORDS=['CAT','DOG','SUN','PIG','COW','MILK','FISH','BIRD','STAR','BOOK','TREE','BALL','HAT','CUP','BUS'];
+  function layout(word){
+    const N=word.length;
+    const r=Math.max(36,Math.min(map.W,map.H)/(N+5));
+    const minD=r*2.3;
+    const x0=r+18, x1=map.W-r-18, y0=map.H*0.14+r, y1=map.H*0.70-r;
+    const pts=[];
+    for(let i=0;i<N;i++){
+      let placed=null;
+      for(let t=0;t<300;t++){
+        const x=x0+Math.random()*Math.max(1,x1-x0);
+        const y=y0+Math.random()*Math.max(1,y1-y0);
+        if(pts.every(q=>Math.hypot(q.x-x,q.y-y)>=minD)){ placed={x,y}; break; }
+      }
+      if(!placed){
+        const cols=3, rows=Math.ceil(N/cols);
+        const cellW=(x1-x0)/cols, cellH=(y1-y0)/rows;
+        const cIdx=i%cols, rIdx=Math.floor(i/cols);
+        placed={x:x0+cellW*(cIdx+0.5), y:y0+cellH*(rIdx+0.5)};
+      }
+      pts.push({x:placed.x,y:placed.y,r,ch:word[i],n:i+1,done:false,lock:true});
+    }
+    return pts;
   }
-  function kick(){
-    if(!actx) return;
-    const o=actx.createOscillator(), g=actx.createGain();
-    o.type='sine'; g.gain.value=0; o.connect(g); g.connect(actx.destination);
-    const t=actx.currentTime;
-    o.frequency.setValueAtTime(160,t); o.frequency.exponentialRampToValueAtTime(52,t+0.12);
-    g.gain.linearRampToValueAtTime(0.38,t+0.008); g.gain.exponentialRampToValueAtTime(0.001,t+0.17);
-    o.start(t); o.stop(t+0.18);
+  function newWord(){
+    let w; do{ w=WORDS[(Math.random()*WORDS.length)|0]; }while(w===G.lastWord&&WORDS.length>1);
+    G.lastWord=w; G.word=w; G.targets=layout(w); G.next=1;
+    $('cLbl').textContent=w; say(w,true);
   }
-  function hihat(){ beep(2200,0.03,0.07); }
-  function sparkle(){ [0,1,2,3].forEach(i=>setTimeout(()=>beep(880+i*140,0.09,0.17),i*55)); }
   return {
-    key:'beat', hud:{counter:true,timer:true,end:true},
-    intro:{title:'리스닝 리듬 🎵',desc:'단어를 들으며 내려오는 그림이 <b>판에 닿을 때</b> 손으로 콕!<br>박자에 맞춰 영어 단어도 들려줘요.'},
-    start(){
-      G.t0=performance.now(); G.endAt=G.t0+ROUND_DUR*1000; G.hits=0; G.combo=0; G.bestCombo=0; G.blocks=[]; G.nextStep=0; G.nextBeatAt=G.t0+BEAT*1000; G.lastTick=0;
-      $('cNum').textContent='0'; $('cLbl').textContent='번'; say('Listen and touch when it lands!',true);
-    },
+    key:'spell', hud:{counter:true,timer:true,end:true},
+    intro:{title:'스펠링 콕콕 🔤',desc:'영어 단어의 <b>알파벳을 순서대로 손으로 콕!</b><br>M-I-L-K 처럼 순서대로 눌러서 단어를 완성해요.<br>25초 동안 몇 단어나 완성할까요?'},
+    start(){ G.sets=0; G.endAt=performance.now()+DUR*1000; newWord();
+      $('cNum').textContent='0'; say('Let\'s spell some words! Touch the letters in order!'); },
     end(){ this.finish(); },
     frame(lms){
       const now=performance.now();
       const remain=Math.max(0,(G.endAt-now)/1000);
       $('timerVal').textContent=Math.ceil(remain);
       if(remain<=0){ this.finish(); return; }
-      while(G.nextBeatAt-LEAD*1000<=now){
-        const lane=PATTERN[G.nextStep%PATTERN.length];
-        G.blocks.push({lane,spawnAt:G.nextBeatAt-LEAD*1000,hitAt:G.nextBeatAt,hit:false,said:false});
-        G.nextStep++; G.nextBeatAt+=BEAT*1000;
-      }
-      if(now-G.lastTick>=BEAT*1000-8){ G.lastTick=now; if(G.nextStep%4===0) kick(); else hihat(); }
       let hands=[];
-      if(lms){ drawPose(lms,'#3E9BDB'); hands=hands2(lms); } else setState('몸이 보이게 서 주세요');
-      ctx.save();
-      for(let i=0;i<4;i++){
-        const lx=laneX(i);
-        ctx.strokeStyle='rgba(60,90,120,.12)'; ctx.lineWidth=2;
-        ctx.beginPath(); ctx.moveTo(lx,topY()-10); ctx.lineTo(lx,hitY()+50); ctx.stroke();
-        const k=1+Math.sin(now/200+i)*0.05;
-        ctx.beginPath(); ctx.arc(lx,hitY(),34*k,0,Math.PI*2);
-        ctx.fillStyle=hexA(LANES[i].col,0.16); ctx.fill();
-        ctx.lineWidth=4; ctx.strokeStyle=LANES[i].col; ctx.stroke();
-      }
-      ctx.restore();
-      if(hands.length) drawHandGlow(hands,'#3E9BDB');
-      const laneW=map.W/4;
-      G.blocks=G.blocks.filter(b=>{
-        const prog=(now-b.spawnAt)/(b.hitAt-b.spawnAt);
-        const y=topY()+(hitY()-topY())*prog;
-        if(prog>1&&(now-b.hitAt)>HITWIN*1000){ if(!b.hit) G.combo=0; return false; }
-        if(!b.hit){
-          const L=LANES[b.lane];
-          if(!b.said&&prog>0.08){ b.said=true; say(L.word,true); }
-          ctx.save(); ctx.translate(laneX(b.lane),y);
-          ctx.font=Math.max(30,map.W/11)+'px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
-          ctx.fillText(L.emoji,0,0); ctx.restore();
-          if(hands.length&&Math.abs(now-b.hitAt)<HITWIN*1000){
-            const inLane=hands.some(h=>Math.floor(h.x/laneW)===b.lane);
-            if(inLane){
-              b.hit=true; G.hits++; G.combo++; if(G.combo>G.bestCombo) G.bestCombo=G.combo;
-              const n=$('cNum'); n.textContent=G.hits; n.classList.remove('pop'); void n.offsetWidth; n.classList.add('pop');
-              tone(L.freq); buzz(25);
-              if(G.combo>0&&G.combo%8===0) sparkle();
-              G.blocks.push({fx:true,parts:burst26(laneX(b.lane),hitY(),L.col),t:now});
-              setState(G.combo>=4?G.combo+' combo! 🎶':'Nice! 🎵');
-            }
+      if(lms){ drawPose(lms,'#E89A9A'); hands=hands2(lms); drawHandGlow(hands,'#E89A9A'); } else setState('몸이 보이게 서 주세요');
+      let done=false;
+      G.targets.forEach(t=>{
+        if(t.done||done) return;
+        ctx.save(); ctx.fillStyle='#fff'; ctx.shadowBlur=10; ctx.shadowColor='rgba(0,0,0,.15)';
+        ctx.beginPath(); ctx.arc(t.x,t.y,t.r,0,Math.PI*2); ctx.fill(); ctx.shadowBlur=0;
+        ctx.lineWidth=5; ctx.strokeStyle=t.n===G.next?'#E89A9A':'#e5d8c8'; ctx.stroke();
+        ctx.font='900 '+Math.round(t.r*0.9)+'px Pretendard'; ctx.fillStyle=t.n===G.next?'#2a4a4a':'#c9b89a'; ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.fillText(t.ch,t.x,t.y+2);
+        if(t.n===G.next){ const k=1+Math.sin(now/160)*0.08; ctx.beginPath(); ctx.arc(t.x,t.y,t.r*k+9,0,Math.PI*2); ctx.strokeStyle='#E89A9A'; ctx.lineWidth=3; ctx.stroke(); }
+        ctx.restore();
+        if(hands.length){
+          const near=anyNear(hands,t.x,t.y,t.r+16);
+          if(t.lock){ if(!near) t.lock=false; return; }
+          if(anySegHit(hands,t.x,t.y,t.r+16)){
+            if(t.n===G.next){
+              t.done=true; G.next++;
+              beep(520+t.n*80,0.1); buzz(30);
+              if(G.next>G.word.length){
+                G.sets++; $('cNum').textContent=G.sets;
+                const nn=$('cNum'); nn.classList.remove('pop'); void nn.offsetWidth; nn.classList.add('pop');
+                setState(G.word+' 완성! 🎉'); beep(880,0.16); buzz([0,50,40,50]); cheer();
+                done=true;
+              }else setState(t.ch+'! 다음 글자를 찾아봐요');
+            }else{ setState(G.word[G.next-1]+' 글자를 먼저 눌러요!'); beep(220,0.12); t.lock=true; }
           }
         }
-        return true;
       });
-      G.blocks=G.blocks.filter(b=>{
-        if(!b.fx) return true;
-        const age=now-b.t; if(age>600) return false;
-        b.parts.forEach(p=>{
-          const dt2=16/1000;
-          p.x+=p.vx*dt2; p.y+=p.vy*dt2; p.vy+=560*dt2;
-          const al=1-age/600;
-          ctx.save(); ctx.globalAlpha=Math.max(0,al); ctx.fillStyle=p.col;
-          ctx.beginPath(); ctx.arc(p.x,p.y,5,0,Math.PI*2); ctx.fill(); ctx.restore();
-        });
-        return true;
-      });
+      if(done) newWord();
     },
-    finish(){ const isNew=recordBest('beat',G.hits); showResult({num:G.hits,sub:'번 콕! 최고 콤보 '+G.bestCombo+'! 🎵'+(isNew?' 🏆 신기록!':''),voice:G.hits+'번 콕 눌렀어요! Great rhythm!'}); }
+    finish(){ const isNew=recordBest('spell',G.sets); showResult({num:G.sets,sub:'단어 완성했어요! 🔤'+(isNew?' 🏆 신기록!':''),voice:G.sets+'단어 완성했어요! Amazing speller!'}); }
   };
 })();
 
