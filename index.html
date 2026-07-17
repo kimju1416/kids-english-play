@@ -80,6 +80,12 @@ canvas#cv{position:absolute;inset:0;width:100%;height:100%;}
   max-width:92vw;text-align:center;font-size:min(6vw,24px);font-weight:900;z-index:6;color:#2a5a7a;
   background:rgba(255,255,255,.9);border-radius:20px;padding:11px 20px;box-shadow:0 6px 0 #B8E8CE;line-height:1.4;}
 #stateTxt:empty{display:none;}
+#repeatBtn{position:absolute;right:14px;bottom:calc(env(safe-area-inset-bottom) + 18px);z-index:7;display:none;
+  align-items:center;justify-content:center;gap:7px;background:rgba(255,255,255,.94);color:#2a5a7a;
+  border-radius:999px;padding:0 22px;min-height:58px;font-size:16px;font-weight:900;
+  box-shadow:0 5px 0 #B8E8CE,0 10px 18px rgba(40,90,90,.2);}
+#repeatBtn.show{display:inline-flex;}
+#repeatBtn:active{transform:translateY(3px);box-shadow:0 2px 0 #B8E8CE;}
 #countdown{position:absolute;inset:0;z-index:18;display:none;align-items:center;justify-content:center;
   background:rgba(190,227,248,.85);font-size:min(40vw,180px);font-weight:900;color:#3E9BDB;text-shadow:3px 3px 0 #fff;}
 
@@ -108,6 +114,7 @@ canvas#cv{position:absolute;inset:0;width:100%;height:100%;}
   <div id="bigCounter"><div id="cNum">0</div><div id="cLbl">개</div></div>
   <div id="timerChip"><div id="timerVal">25</div></div>
   <div id="stateTxt"></div>
+  <button id="repeatBtn">🔊 다시 듣기</button>
   <div id="countdown">3</div>
 
   <!-- 허브 -->
@@ -119,7 +126,7 @@ canvas#cv{position:absolute;inset:0;width:100%;height:100%;}
         <button class="gcard" data-g="abc" style="--bd:#FFD9D9;--sh:#E89A9A"><div class="gicon">🔤</div><div class="gname">알파벳 콕콕</div><div class="gdesc">듣고 알맞은 글자를 콕!</div></button>
         <button class="gcard" data-g="listen" style="--bd:#D6F5D6;--sh:#93D693"><div class="gicon">👂</div><div class="gname">픽처 리스닝</div><div class="gdesc">듣고 알맞은 그림을 콕!</div></button>
         <button class="gcard" data-g="phonics" style="--bd:#FFE39A;--sh:#E0BE5E"><div class="gicon">🐹</div><div class="gname">파닉스 두더지</div><div class="gdesc">시작하는 소리를 찾아요!</div></button>
-        <button class="gcard" data-g="spell" style="--bd:#FFD9D9;--sh:#F0A8B8"><div class="gicon">🔡</div><div class="gname">스펠링 콕콕</div><div class="gdesc">M-I-L-K 순서대로 콕!</div></button>
+        <button class="gcard" data-g="spell" style="--bd:#FFD9D9;--sh:#F0A8B8"><div class="gicon">🔡</div><div class="gname">스펠링 콕콕</div><div class="gdesc">그림 보고 순서대로 콕!</div></button>
         <button class="gcard" data-g="color" style="--bd:#E5D4FF;--sh:#B79AE8"><div class="gicon">🎨</div><div class="gname">컬러 점프</div><div class="gdesc">색깔 이름 듣고 콕!</div></button>
         <button class="gcard" data-g="simon" style="--bd:#C7E8FF;--sh:#8FC4E8"><div class="gicon">🙆</div><div class="gname">바디파츠 사이먼</div><div class="gdesc">Touch your head! 몸으로!</div></button>
       </div>
@@ -145,7 +152,7 @@ canvas#cv{position:absolute;inset:0;width:100%;height:100%;}
   <!-- 결과 -->
   <div id="resultScr" class="screen">
     <svg class="mascot" id="resultMascot" viewBox="0 0 120 120"></svg>
-    <div class="stars">⭐⭐⭐</div>
+    <div class="stars" id="resStars">⭐⭐⭐</div>
     <div class="rnum" id="resNum">0</div>
     <div class="rsub" id="resSub"></div>
     <div class="btn-row" style="margin-top:26px">
@@ -306,16 +313,93 @@ function drawHandGlow(pts,col){
     ctx.beginPath(); ctx.arc(p.x,p.y,Math.max(6,map.W/64),0,Math.PI*2); ctx.fillStyle='#f0f9ff'; ctx.fill(); });
   ctx.restore();
 }
-function randPos(r,avoid){
-  for(let t=0;t<300;t++){
-    const x=r+20+Math.random()*(map.W-2*(r+20));
-    const y=map.H*0.14+r+Math.random()*(map.H*0.52-2*r);
-    if(!avoid||avoid.every(a=>Math.hypot(a.x-x,a.y-y)>a.d)) return {x,y};
-  }
-  return {x:map.W/2,y:map.H*0.32};
-}
 function rrCtx(x,y,w,h,r){ ctx.beginPath(); if(ctx.roundRect) ctx.roundRect(x,y,w,h,r); else ctx.rect(x,y,w,h); }
-function hexA(hex,a){ const n=parseInt(hex.slice(1),16); return 'rgba('+((n>>16)&255)+','+((n>>8)&255)+','+(n&255)+','+a+')'; }
+function clamp(v,a,b){ return v<a?a:(v>b?b:v); }
+function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=(Math.random()*(i+1))|0; [a[i],a[j]]=[a[j],a[i]]; } return a; }
+
+/* ============================================================
+   배치 시스템 — 보기는 "카메라 영상이 실제로 보이는 영역" 안에만 둔다.
+   화면 높이(map.H)로 배치하면, 폰이 가로(16:9) 스트림을 줄 때 영상이
+   화면 중앙 좁은 띠에만 letterbox로 들어가서 보기 절반이 검은 여백
+   (=아이 머리 위)에 떠버린다. 손이 절대 닿지 않는 자리가 된다.
+   ============================================================ */
+function band(){
+  const l=Math.max(0,map.ox), r=Math.min(map.W,map.ox+map.vw*map.s);
+  const t=Math.max(0,map.oy), b=Math.min(map.H,map.oy+map.vh*map.s);
+  return {l,r,t,b,w:Math.max(80,r-l),h:Math.max(80,b-t)};
+}
+/* 아이가 서 있을 때 손이 닿는 구간: 영상 밴드의 위 15% ~ 74%(머리~허리) */
+function layoutN(n){
+  const B=band();
+  const padX=Math.max(8,B.w*0.03);
+  const x0=B.l+padX, x1=B.r-padX;
+  const y0=B.t+B.h*0.15, y1=B.t+B.h*0.74;
+  const AW=Math.max(60,x1-x0), AH=Math.max(60,y1-y0);
+  const RMAX=Math.min(map.W,map.H)/7;
+  // 한 줄 / 두 줄 / 세 줄 중 반지름이 가장 큰(=가장 잘 보이는) 구성을 고른다
+  const fit=rows=>{ const cols=Math.ceil(n/rows);
+    return {rows,cols,r:Math.min(AW/(cols*2.25),AH/(rows*2.25),RMAX)}; };
+  let best=fit(1);
+  for(const rows of [2,3]){ if(rows>n) break; const f=fit(rows); if(f.r>best.r) best=f; }
+  const {rows,cols}=best, r=Math.max(20,Math.round(best.r));
+  const cellW=AW/cols, cellH=AH/rows;
+  const cells=[];
+  for(let i=0;i<n;i++){
+    const rI=(i/cols)|0, cI=i%cols;
+    const inRow=Math.min(cols,n-rI*cols);              // 마지막 줄이 덜 차면 가운데 정렬
+    const off=(cols-inRow)*cellW/2;
+    cells.push({x:x0+off+cellW*(cI+0.5), y:y0+cellH*(rI+0.5)});
+  }
+  // 지터는 셀 반칸을 넘지 않게 — 매번 위치가 조금 달라지되 절대 겹치지 않는다
+  const jx=Math.max(0,(cellW/2-r)*0.55), jy=Math.max(0,(cellH/2-r)*0.55);
+  return shuffle(cells).map(c=>({
+    x:clamp(c.x+(Math.random()*2-1)*jx, x0+r, x1-r),
+    y:clamp(c.y+(Math.random()*2-1)*jy, y0+r, y1-r),
+    r
+  }));
+}
+/* 문제(🔊·그림 힌트)를 보기 위쪽, 영상 밴드 안에 그린다 */
+function drawHint(txt,size){
+  const B=band();
+  ctx.save(); ctx.font=Math.round(size||Math.min(map.W,map.H)*0.11)+'px sans-serif';
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText(txt,map.W/2,B.t+B.h*0.075); ctx.restore();
+}
+
+/* ============================================================
+   셔플백 — 풀을 한 바퀴 다 돌기 전에는 같은 문제가 다시 안 나온다.
+   남은 항목을 localStorage에 저장해 새로고침·재시작해도 이어진다.
+   ============================================================ */
+function bagNext(key,pool,idOf){
+  idOf=idOf||(x=>String(x));
+  const LS='kep_bag_'+key, LSL=LS+'_last';
+  let ids=null, last=null;
+  try{ ids=JSON.parse(localStorage.getItem(LS)||'null'); last=localStorage.getItem(LSL); }catch(e){}
+  const valid=pool.map(idOf);
+  if(Array.isArray(ids)) ids=ids.filter(id=>valid.indexOf(id)>=0);   // 단어 목록이 바뀌어도 안전
+  if(!Array.isArray(ids)||!ids.length){
+    ids=shuffle(valid.slice());
+    // 새 백의 첫 문제가 직전 문제와 같아지는 것만 피한다
+    if(last!=null&&ids.length>1&&ids[0]===last){ const j=1+((Math.random()*(ids.length-1))|0); [ids[0],ids[j]]=[ids[j],ids[0]]; }
+  }
+  const id=ids.shift();
+  try{ localStorage.setItem(LS,JSON.stringify(ids)); localStorage.setItem(LSL,id); }catch(e){}
+  return pool[valid.indexOf(id)]||pool[0];
+}
+/* 오답 보기 — 화면에 보이는 값(distinctBy) 기준으로 서로 겹치지 않게 뽑는다.
+   prefer가 있으면 그쪽을 우선(헷갈리는 글자군 등) */
+function pickWrong(pool,target,n,distinctBy,prefer){
+  const seen={}, out=[];
+  seen[distinctBy(target)]=1;
+  const order=prefer?shuffle(prefer.slice()).concat(shuffle(pool.slice())):shuffle(pool.slice());
+  for(const p of order){
+    const v=distinctBy(p);
+    if(seen[v]) continue;
+    seen[v]=1; out.push(p);
+    if(out.length>=n) break;
+  }
+  return out;
+}
 
 /* ---------- 개인 최고기록(localStorage) ---------- */
 const BEST_CFG={
@@ -354,6 +438,7 @@ function setHud(on,opt){
   $('bigCounter').classList.toggle('show',!!(on&&opt.counter));
   $('timerChip').classList.toggle('show',!!(on&&opt.timer));
   $('endBtn').classList.toggle('show',!!(on&&opt.end));
+  $('repeatBtn').classList.toggle('show',!!(on&&opt.repeat));
   $('flipBtn').classList.toggle('show',on);
   $('viewBtn').classList.toggle('show',on);
   $('stateTxt').textContent='';
@@ -408,7 +493,9 @@ async function startActivity(){
 }
 function showResult(o){
   running=false; setHud(false); current=null;
-  $('resNum').textContent=o.num;
+  const p=(o.total?o.num/o.total:1);
+  $('resStars').textContent=p>=1?'⭐⭐⭐':(p>=0.7?'⭐⭐':(p>=0.4?'⭐':'✨'));
+  $('resNum').textContent=o.numTxt!=null?o.numTxt:o.num;
   $('resSub').innerHTML=o.sub||'';
   show('resultScr');
   cheer(); buzz([0,70,50,70]);
@@ -424,6 +511,7 @@ $('introStart').onclick=startActivity;
 $('resHomeBtn').onclick=goHub;
 $('resAgainBtn').onclick=()=>{ openIntro(curKey); startActivity(); };
 $('endBtn').onclick=()=>{ if(current&&current.end) current.end(); };
+$('repeatBtn').onclick=()=>{ if(current&&current.repeat) current.repeat(); };
 $('flipBtn').onclick=()=>{ facing=(facing==='user')?'environment':'user'; stopCam(); startCam(); };
 $('viewBtn').onclick=()=>{ viewPref=(viewPref==='contain')?'cover':'contain'; try{ localStorage.setItem('kep_view',viewPref); }catch(e){} updateMap(); };
 document.querySelectorAll('.gcard[data-g]').forEach(b=>b.addEventListener('click',()=>{ initAudio(); openIntro(b.dataset.g); }));
@@ -433,7 +521,8 @@ renderHubBests();
    게임 정의 (6종 영어 모션 게임)
    ============================================================ */
 const GAME={};
-const DUR=25; // 초 — 유아 집중시간 고려, 짧게
+const ROUNDS=10;                                                  // 게임마다 10문제
+function choiceCount(round){ return round<3?2:(round<7?3:4); }    // 보기 2→3→4로 점점 어렵게
 
 function burst26(x,y,col){
   const out=[]; for(let i=0;i<26;i++){ const a=Math.random()*6.28;
@@ -459,392 +548,413 @@ function drawFx(G,now){
   });
 }
 
-/* ---------- 🔤 알파벳 콕콕 ---------- */
-GAME.abc=(()=>{
+/* ============================================================
+   단어은행 — 풀이 클수록, 셔플백과 합쳐져 반복이 줄어든다
+   ============================================================ */
+const LETTERS='ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+/* 모양·이름이 헷갈리는 글자끼리 묶음 — 뒤쪽 라운드에서 오답으로 우선 등장 */
+const CONFUSE=[['B','D','P','R'],['M','N','W'],['C','G','O','Q'],['E','F'],['I','J','L','T'],
+  ['U','V','Y'],['S','Z'],['K','X'],['A','H'],['G','J']];
+
+const PIC=[ /* 그림-단어 70개 */
+  {e:'🐶',w:'dog'},{e:'🐱',w:'cat'},{e:'🐷',w:'pig'},{e:'🐮',w:'cow'},{e:'🦆',w:'duck'},{e:'🐸',w:'frog'},
+  {e:'🐦',w:'bird'},{e:'🐟',w:'fish'},{e:'🐻',w:'bear'},{e:'🦁',w:'lion'},{e:'🐯',w:'tiger'},{e:'🐵',w:'monkey'},
+  {e:'🐘',w:'elephant'},{e:'🐰',w:'rabbit'},{e:'🐭',w:'mouse'},{e:'🐴',w:'horse'},{e:'🐑',w:'sheep'},{e:'🐔',w:'chicken'},
+  {e:'🐝',w:'bee'},{e:'🦋',w:'butterfly'},{e:'🐢',w:'turtle'},{e:'🐍',w:'snake'},{e:'🐧',w:'penguin'},{e:'🦉',w:'owl'},
+  {e:'🍎',w:'apple'},{e:'🍌',w:'banana'},{e:'🍇',w:'grapes'},{e:'🍊',w:'orange'},{e:'🍓',w:'strawberry'},{e:'🍉',w:'watermelon'},
+  {e:'🍞',w:'bread'},{e:'🍰',w:'cake'},{e:'🥛',w:'milk'},{e:'🥚',w:'egg'},{e:'🍕',w:'pizza'},{e:'🍦',w:'ice cream'},
+  {e:'🥕',w:'carrot'},{e:'🌽',w:'corn'},{e:'🍪',w:'cookie'},{e:'🍬',w:'candy'},
+  {e:'🚗',w:'car'},{e:'🚌',w:'bus'},{e:'🚂',w:'train'},{e:'✈️',w:'airplane'},{e:'⛵',w:'boat'},{e:'🚲',w:'bike'},
+  {e:'🚚',w:'truck'},{e:'🚒',w:'fire truck'},
+  {e:'☀️',w:'sun'},{e:'🌙',w:'moon'},{e:'⭐',w:'star'},{e:'☁️',w:'cloud'},{e:'🌧️',w:'rain'},{e:'❄️',w:'snow'},
+  {e:'🌳',w:'tree'},{e:'🌸',w:'flower'},{e:'🌈',w:'rainbow'},
+  {e:'⚽',w:'ball'},{e:'📖',w:'book'},{e:'🏠',w:'house'},{e:'🎩',w:'hat'},{e:'👟',w:'shoes'},{e:'🔑',w:'key'},
+  {e:'☂️',w:'umbrella'},{e:'🎈',w:'balloon'},{e:'🥁',w:'drum'},{e:'🎸',w:'guitar'},{e:'✏️',w:'pencil'},
+  {e:'✂️',w:'scissors'},{e:'🕐',w:'clock'}
+];
+
+const PHON=[ /* 파닉스 50개 — 첫 글자(l)가 정답 */
+  {w:'apple',e:'🍎',l:'A'},{w:'ant',e:'🐜',l:'A'},
+  {w:'ball',e:'⚽',l:'B'},{w:'bear',e:'🐻',l:'B'},{w:'bus',e:'🚌',l:'B'},
+  {w:'cat',e:'🐱',l:'C'},{w:'car',e:'🚗',l:'C'},{w:'cake',e:'🍰',l:'C'},
+  {w:'dog',e:'🐶',l:'D'},{w:'duck',e:'🦆',l:'D'},
+  {w:'egg',e:'🥚',l:'E'},{w:'elephant',e:'🐘',l:'E'},
+  {w:'fish',e:'🐟',l:'F'},{w:'frog',e:'🐸',l:'F'},{w:'flower',e:'🌸',l:'F'},
+  {w:'grapes',e:'🍇',l:'G'},{w:'guitar',e:'🎸',l:'G'},
+  {w:'house',e:'🏠',l:'H'},{w:'hat',e:'🎩',l:'H'},{w:'horse',e:'🐴',l:'H'},
+  {w:'ice cream',e:'🍦',l:'I'},
+  {w:'juice',e:'🧃',l:'J'},
+  {w:'key',e:'🔑',l:'K'},{w:'kite',e:'🪁',l:'K'},
+  {w:'lion',e:'🦁',l:'L'},{w:'leaf',e:'🍃',l:'L'},
+  {w:'moon',e:'🌙',l:'M'},{w:'milk',e:'🥛',l:'M'},{w:'mouse',e:'🐭',l:'M'},
+  {w:'nose',e:'👃',l:'N'},
+  {w:'orange',e:'🍊',l:'O'},{w:'owl',e:'🦉',l:'O'},
+  {w:'pig',e:'🐷',l:'P'},{w:'pizza',e:'🍕',l:'P'},{w:'pencil',e:'✏️',l:'P'},
+  {w:'queen',e:'👑',l:'Q'},
+  {w:'rainbow',e:'🌈',l:'R'},{w:'rabbit',e:'🐰',l:'R'},
+  {w:'sun',e:'☀️',l:'S'},{w:'star',e:'⭐',l:'S'},{w:'snake',e:'🐍',l:'S'},
+  {w:'tree',e:'🌳',l:'T'},{w:'tiger',e:'🐯',l:'T'},{w:'train',e:'🚂',l:'T'},
+  {w:'umbrella',e:'☂️',l:'U'},
+  {w:'violin',e:'🎻',l:'V'},
+  {w:'watermelon',e:'🍉',l:'W'},{w:'window',e:'🪟',l:'W'},
+  {w:'yo-yo',e:'🪀',l:'Y'},
+  {w:'zebra',e:'🦓',l:'Z'}
+];
+
+const COLORS=[ /* 11색 — white는 흰 배경에 묻히니 테두리를 따로 준다 */
+  {name:'red',hex:'#E85A5A'},{name:'blue',hex:'#3E9BDB'},{name:'yellow',hex:'#E8C23E'},
+  {name:'green',hex:'#5AB86E'},{name:'purple',hex:'#9B7FD4'},{name:'orange',hex:'#E8923E'},
+  {name:'pink',hex:'#E87FB0'},{name:'brown',hex:'#9A6A3A'},{name:'black',hex:'#3A3A3A'},
+  {name:'white',hex:'#FFFFFF',ring:'#8A97A3'},{name:'gray',hex:'#9AA5AD'}
+];
+
+/* ============================================================
+   공통 퀴즈 엔진 — 알파벳·리스닝·파닉스·컬러가 같은 뼈대를 쓴다
+   ============================================================ */
+function bubble(x,y,r,st,ring){
+  ctx.save(); ctx.fillStyle='#fff'; ctx.shadowBlur=12; ctx.shadowColor='rgba(0,0,0,.18)';
+  ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill(); ctx.shadowBlur=0;
+  ctx.lineWidth=6; ctx.strokeStyle=st.isOk?'#2F9E5A':(st.wrongPick?'#E04B4B':ring); ctx.stroke();
+  ctx.restore();
+}
+function makeQuiz(cfg){
   const G={};
-  const ROUNDS=6;
-  const LETTERS='ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
   function gen(){
-    const idx=(Math.random()*LETTERS.length)|0; const target=LETTERS[idx];
-    let wIdx; do{ wIdx=(Math.random()*LETTERS.length)|0; }while(wIdx===idx);
-    const wrong=LETTERS[wIdx];
-    const leftOk=Math.random()<0.5;
-    G.q={target,ch:[leftOk?target:wrong,leftOk?wrong:target],ok:leftOk?0:1,lock:true,done:false};
-    say(target,true);
+    const n=(cfg.choices||choiceCount)(G.round);
+    const target=bagNext(cfg.key,cfg.pool,cfg.idOf);
+    const wrong=pickWrong(cfg.pool,target,n-1,cfg.distinctBy,cfg.prefer?cfg.prefer(target,G.round):null);
+    const items=shuffle([target].concat(wrong));
+    const pts=layoutN(items.length);
+    G.q={target,ok:items.indexOf(target),pick:-1,lock:true,done:false,doneAt:0,
+      items:items.map((it,i)=>({it,x:pts[i].x,y:pts[i].y,r:pts[i].r}))};
+    cfg.speak(target);
   }
-  return {
-    key:'abc', hud:{counter:true,end:true},
-    intro:{title:'알파벳 콕콕 🔤',desc:'영어 알파벳 소리를 듣고 <b>맞는 글자를 손으로 콕!</b><br>6문제 도전!'},
-    start(){ G.round=0; G.ok=0; G.fx=[]; G.rings=[]; G.done=false; gen(); $('cNum').textContent='0'; $('cLbl').textContent='문제'; },
-    end(){ this.finish(); },
+  function choose(i,c,now){
+    const q=G.q; q.done=true; q.doneAt=now; q.pick=i;
+    const right=(i===q.ok);
+    if(right){ G.ok++; cheer(); buzz(30); setState(cfg.okMsg(q.target));
+      G.fx.push(...burst26(c.x,c.y,'#93D693')); G.rings.push({x:c.x,y:c.y,t:now,r:c.r}); }
+    else{ beep(300,0.2); buzz([0,60,40,60]); setState(cfg.ngMsg(q.target)); }
+    G.round++; $('cNum').textContent=G.round+'/'+ROUNDS;
+    setTimeout(()=>{
+      if(G.done||current!==API) return;          // 그만두기·홈으로 나간 뒤 늦게 도는 것 방지
+      if(G.round>=ROUNDS) API.finish(); else gen();
+    }, right?950:1600);                          // 오답은 정답을 보여줄 시간을 더 준다
+  }
+  const API={
+    key:cfg.key, hud:{counter:true,end:true,repeat:true}, intro:cfg.intro,
+    start(){ G.round=0; G.ok=0; G.fx=[]; G.rings=[]; G.done=false;
+      $('cNum').textContent='0/'+ROUNDS; $('cLbl').textContent='문제'; gen(); },
+    end(){ API.finish(); },
+    repeat(){ if(G.q) cfg.speak(G.q.target); },
     frame(lms){
-      const now=performance.now();
-      let hands=[];
-      if(lms){ drawPose(lms,'#E89A9A'); hands=hands2(lms); drawHandGlow(hands,'#E89A9A'); } else setState('몸이 보이게 서 주세요');
-      const r=Math.min(map.W,map.H)*0.16;
-      const Lx=map.W*0.28, Rx=map.W*0.72, chY=map.H*0.4;
-      ctx.font=Math.round(r*0.7)+'px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
-      ctx.fillText('🔊',map.W/2,chY-r-56);
-      [{x:Lx,v:G.q.ch[0]},{x:Rx,v:G.q.ch[1]}].forEach((c,i)=>{
-        const isCorrectPick=G.q.done&&i===G.q.ok;
-        const pop=isCorrectPick?1+Math.sin(Math.min(1,(now-G.q.doneAt)/260)*Math.PI)*0.28:1;
-        ctx.save(); ctx.fillStyle='#fff'; ctx.shadowBlur=12; ctx.shadowColor='rgba(0,0,0,.18)';
-        ctx.beginPath(); ctx.arc(c.x,chY,r*pop,0,Math.PI*2); ctx.fill(); ctx.shadowBlur=0;
-        ctx.lineWidth=5; ctx.strokeStyle=isCorrectPick?'#93D693':'#FFD9D9'; ctx.stroke();
-        ctx.font='900 '+Math.max(34,r*0.95*pop)+'px Pretendard'; ctx.fillStyle='#2a4a4a'; ctx.textAlign='center'; ctx.textBaseline='middle';
-        ctx.fillText(c.v,c.x,chY+2); ctx.restore();
-        if(hands.length&&!G.q.done){
-          if(G.q.lock){ if(!anyNear(hands,Lx,chY,r+16)&&!anyNear(hands,Rx,chY,r+16)) G.q.lock=false; return; }
-          if(anySegHit(hands,c.x,chY,r+16)){
-            G.q.done=true; G.q.doneAt=now;
-            if(i===G.q.ok){ G.ok++; cheer(); setState('정답! '+G.q.target+'! 참 잘했어요! 🎉'); G.fx.push(...burst26(c.x,chY,'#93D693')); G.rings.push({x:c.x,y:chY,t:now,r}); }
-            else{ beep(300,0.18); setState('아쉬워요, 다시 들어볼까요? 😊'); }
-            G.round++; $('cNum').textContent=G.round+'/'+ROUNDS;
-            setTimeout(()=>{ if(G.round>=ROUNDS) this.finish(); else gen(); },1000);
-          }
-        }
+      const now=performance.now(); let hands=[];
+      if(lms){ drawPose(lms,cfg.accent); hands=hands2(lms); drawHandGlow(hands,cfg.accent); }
+      else setState('몸이 보이게 서 주세요');
+      const q=G.q; if(!q) return;
+      drawHint(cfg.hint(q.target));
+      // 손이 보기에서 한 번 떨어져야 터치를 받는다(다음 문제로 넘어가자마자 오터치 방지).
+      // locked는 '이 프레임 시작 시점'의 잠금 — 잠금이 풀리는 프레임에는 판정하지 않는다.
+      // 안 그러면 직전 프레임에서 이어진 손 궤적이 새 보기를 스쳐 바로 선택돼버린다.
+      const locked=q.lock;
+      if(q.lock && (!hands.length || !q.items.some(c=>anyNear(hands,c.x,c.y,c.r+16)))) q.lock=false;
+      q.items.forEach((c,i)=>{
+        const isOk=q.done&&i===q.ok, wrongPick=q.done&&i===q.pick&&q.pick!==q.ok;
+        const pop=isOk?1+Math.sin(Math.min(1,(now-q.doneAt)/260)*Math.PI)*0.26:1;
+        cfg.drawItem(c.it,c.x,c.y,c.r*pop,{isOk,wrongPick});
+        if(!locked&&hands.length&&!q.done&&!q.lock&&anySegHit(hands,c.x,c.y,c.r+16)) choose(i,c,now);
       });
       drawFx(G,now);
     },
-    finish(){ if(G.done) return; G.done=true; const isNew=recordBest('abc',G.ok); showResult({num:G.ok+'/'+ROUNDS,sub:'문제 맞혔어요! 🔤'+(isNew?' 🏆 신기록!':''),voice:ROUNDS+'문제 중에 '+G.ok+'개 맞혔어요! Great job!'}); }
+    finish(){ if(G.done) return; G.done=true;
+      const isNew=recordBest(cfg.key,G.ok);
+      showResult({num:G.ok,total:ROUNDS,numTxt:G.ok+'/'+ROUNDS,
+        sub:'문제 맞혔어요! '+cfg.emoji+(isNew?' 🏆 신기록!':''),
+        voice:ROUNDS+'문제 중에 '+G.ok+'개 맞혔어요! '+cfg.praise});
+    },
+    _dbg(){ return G; }        // 자동 점검용
   };
-})();
+  return API;
+}
+
+/* ---------- 🔤 알파벳 콕콕 ---------- */
+GAME.abc=makeQuiz({
+  key:'abc', accent:'#E89A9A', emoji:'🔤', praise:'Great job!',
+  pool:LETTERS, idOf:c=>c, distinctBy:c=>c,
+  intro:{title:'알파벳 콕콕 🔤',desc:'영어 알파벳 소리를 듣고 <b>맞는 글자를 손으로 콕!</b><br>10문제 도전 — 뒤로 갈수록 보기가 늘어나요.'},
+  speak:t=>say(t,true),
+  hint:()=>'🔊',
+  // 4라운드부터는 절반쯤 헷갈리는 글자(B/D/P…)를 오답으로 붙인다
+  prefer:(t,round)=>{ if(round<4||Math.random()<0.45) return null;
+    const g=CONFUSE.filter(x=>x.indexOf(t)>=0);
+    if(!g.length) return null;
+    return g[(Math.random()*g.length)|0].filter(c=>c!==t); },
+  drawItem:(v,x,y,r,st)=>{ bubble(x,y,r,st,'#FFD9D9');
+    ctx.save(); ctx.font='900 '+Math.round(r*0.95)+'px Pretendard'; ctx.fillStyle='#2a4a4a';
+    ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(v,x,y+2); ctx.restore(); },
+  okMsg:t=>'정답! '+t+'! 참 잘했어요! 🎉',
+  ngMsg:t=>'정답은 '+t+' 였어요 😊'
+});
 
 /* ---------- 👂 픽처 리스닝 ---------- */
-GAME.listen=(()=>{
-  const G={};
-  const ROUNDS=6;
-  const WORDS=[{e:'🐶',w:'dog'},{e:'🐱',w:'cat'},{e:'🍎',w:'apple'},{e:'🍌',w:'banana'},{e:'🚗',w:'car'},
-    {e:'☀️',w:'sun'},{e:'🌙',w:'moon'},{e:'⭐',w:'star'},{e:'🐟',w:'fish'},{e:'🐦',w:'bird'},
-    {e:'⚽',w:'ball'},{e:'📖',w:'book'},{e:'🏠',w:'house'},{e:'🌳',w:'tree'},{e:'🌸',w:'flower'},
-    {e:'🚒',w:'fire truck'},{e:'🚂',w:'train'},{e:'🚌',w:'bus'},{e:'🐘',w:'elephant'},{e:'🦁',w:'lion'}];
-  function gen(){
-    const idx=(Math.random()*WORDS.length)|0; const target=WORDS[idx];
-    let wIdx; do{ wIdx=(Math.random()*WORDS.length)|0; }while(wIdx===idx);
-    const wrong=WORDS[wIdx];
-    const leftOk=Math.random()<0.5;
-    G.q={target,ch:[leftOk?target:wrong,leftOk?wrong:target],ok:leftOk?0:1,lock:true,done:false};
-    say('Where is the '+target.w+'?',true);
-  }
-  return {
-    key:'listen', hud:{counter:true,end:true},
-    intro:{title:'픽처 리스닝 👂',desc:'영어 문장을 잘 듣고 <b>알맞은 그림을 손으로 콕!</b><br>6문제 도전!'},
-    start(){ G.round=0; G.ok=0; G.fx=[]; G.rings=[]; G.done=false; gen(); $('cNum').textContent='0'; $('cLbl').textContent='문제'; },
-    end(){ this.finish(); },
-    frame(lms){
-      const now=performance.now();
-      let hands=[];
-      if(lms){ drawPose(lms,'#93D693'); hands=hands2(lms); drawHandGlow(hands,'#93D693'); } else setState('몸이 보이게 서 주세요');
-      const r=Math.min(map.W,map.H)*0.16;
-      const Lx=map.W*0.28, Rx=map.W*0.72, chY=map.H*0.4;
-      ctx.font=Math.round(r*0.6)+'px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
-      ctx.fillText('👂',map.W/2,chY-r-56);
-      [{x:Lx,v:G.q.ch[0]},{x:Rx,v:G.q.ch[1]}].forEach((c,i)=>{
-        const isCorrectPick=G.q.done&&i===G.q.ok;
-        const pop=isCorrectPick?1+Math.sin(Math.min(1,(now-G.q.doneAt)/260)*Math.PI)*0.28:1;
-        ctx.save(); ctx.fillStyle='#fff'; ctx.shadowBlur=12; ctx.shadowColor='rgba(0,0,0,.18)';
-        ctx.beginPath(); ctx.arc(c.x,chY,r*pop,0,Math.PI*2); ctx.fill(); ctx.shadowBlur=0;
-        ctx.lineWidth=5; ctx.strokeStyle=isCorrectPick?'#93D693':'#D6F5D6'; ctx.stroke();
-        ctx.font=Math.max(38,r*1.1*pop)+'px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
-        ctx.fillText(c.v.e,c.x,chY+2); ctx.restore();
-        if(hands.length&&!G.q.done){
-          if(G.q.lock){ if(!anyNear(hands,Lx,chY,r+16)&&!anyNear(hands,Rx,chY,r+16)) G.q.lock=false; return; }
-          if(anySegHit(hands,c.x,chY,r+16)){
-            G.q.done=true; G.q.doneAt=now;
-            if(i===G.q.ok){ G.ok++; cheer(); setState('Yes! '+G.q.target.w+'! 참 잘했어요! 🎉'); G.fx.push(...burst26(c.x,chY,'#93D693')); G.rings.push({x:c.x,y:chY,t:now,r}); }
-            else{ beep(300,0.18); setState('아쉬워요, 다시 들어볼까요? 😊'); }
-            G.round++; $('cNum').textContent=G.round+'/'+ROUNDS;
-            setTimeout(()=>{ if(G.round>=ROUNDS) this.finish(); else gen(); },1000);
-          }
-        }
-      });
-      drawFx(G,now);
-    },
-    finish(){ if(G.done) return; G.done=true; const isNew=recordBest('listen',G.ok); showResult({num:G.ok+'/'+ROUNDS,sub:'문제 맞혔어요! 👂'+(isNew?' 🏆 신기록!':''),voice:ROUNDS+'문제 중에 '+G.ok+'개 맞혔어요! Excellent listening!'}); }
-  };
-})();
+GAME.listen=makeQuiz({
+  key:'listen', accent:'#93D693', emoji:'👂', praise:'Excellent listening!',
+  pool:PIC, idOf:p=>p.w, distinctBy:p=>p.w,
+  intro:{title:'픽처 리스닝 👂',desc:'영어 문장을 잘 듣고 <b>알맞은 그림을 손으로 콕!</b><br>그림 단어 70개 중에서 10문제 도전!'},
+  speak:t=>say('Where is the '+t.w+'?',true),
+  hint:()=>'👂',
+  drawItem:(v,x,y,r,st)=>{ bubble(x,y,r,st,'#D6F5D6');
+    ctx.save(); ctx.font=Math.round(r*1.05)+'px sans-serif';
+    ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(v.e,x,y+2); ctx.restore(); },
+  okMsg:t=>'Yes! '+t.w+'! 참 잘했어요! 🎉',
+  ngMsg:t=>'정답은 '+t.e+' '+t.w+' 였어요 😊'
+});
 
 /* ---------- 🐹 파닉스 두더지 ---------- */
-GAME.phonics=(()=>{
-  const G={};
-  const ROUNDS=6;
-  const PAIRS=[{w:'cat',e:'🐱',l:'C'},{w:'dog',e:'🐶',l:'D'},{w:'sun',e:'☀️',l:'S'},{w:'fish',e:'🐟',l:'F'},
-    {w:'ball',e:'⚽',l:'B'},{w:'moon',e:'🌙',l:'M'},{w:'tree',e:'🌳',l:'T'},{w:'lion',e:'🦁',l:'L'},
-    {w:'house',e:'🏠',l:'H'},{w:'pig',e:'🐷',l:'P'}];
-  function gen(){
-    const idx=(Math.random()*PAIRS.length)|0; const target=PAIRS[idx];
-    let wIdx; do{ wIdx=(Math.random()*PAIRS.length)|0; }while(wIdx===idx||PAIRS[wIdx].l===target.l);
-    const wrong=PAIRS[wIdx];
-    const leftOk=Math.random()<0.5;
-    G.q={target,ch:[leftOk?target.l:wrong.l,leftOk?wrong.l:target.l],ok:leftOk?0:1,lock:true,done:false};
-    say(target.w+'! What letter does it start with?',true);
-  }
-  return {
-    key:'phonics', hud:{counter:true,end:true},
-    intro:{title:'파닉스 두더지 🐹',desc:'영어 단어를 듣고 <b>시작하는 글자 두더지를 콕!</b><br>6문제 도전!'},
-    start(){ G.round=0; G.ok=0; G.fx=[]; G.rings=[]; G.done=false; gen(); $('cNum').textContent='0'; $('cLbl').textContent='문제'; },
-    end(){ this.finish(); },
-    frame(lms){
-      const now=performance.now();
-      let hands=[];
-      if(lms){ drawPose(lms,'#E0BE5E'); hands=hands2(lms); drawHandGlow(hands,'#E0BE5E'); } else setState('몸이 보이게 서 주세요');
-      const r=Math.min(map.W,map.H)*0.15;
-      const Lx=map.W*0.28, Rx=map.W*0.72, chY=map.H*0.42;
-      ctx.font=Math.round(r*0.9)+'px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
-      ctx.fillText(G.q.target.e,map.W/2,chY-r-56);
-      [{x:Lx,v:G.q.ch[0]},{x:Rx,v:G.q.ch[1]}].forEach((c,i)=>{
-        const isCorrectPick=G.q.done&&i===G.q.ok;
-        const pop=isCorrectPick?1+Math.sin(Math.min(1,(now-G.q.doneAt)/260)*Math.PI)*0.28:1;
-        ctx.save();
-        ctx.fillStyle='#c9a05a'; ctx.beginPath(); ctx.ellipse(c.x,chY+r*0.55,r*1.05,r*0.42,0,0,Math.PI*2); ctx.fill();
-        ctx.fillStyle='#fff'; ctx.shadowBlur=12; ctx.shadowColor='rgba(0,0,0,.18)';
-        ctx.beginPath(); ctx.arc(c.x,chY,r*pop,0,Math.PI*2); ctx.fill(); ctx.shadowBlur=0;
-        ctx.lineWidth=5; ctx.strokeStyle=isCorrectPick?'#93D693':'#FFE39A'; ctx.stroke();
-        ctx.font='900 '+Math.max(32,r*0.9*pop)+'px Pretendard'; ctx.fillStyle='#5c3a24'; ctx.textAlign='center'; ctx.textBaseline='middle';
-        ctx.fillText(c.v,c.x,chY+2); ctx.restore();
-        if(hands.length&&!G.q.done){
-          if(G.q.lock){ if(!anyNear(hands,Lx,chY,r+16)&&!anyNear(hands,Rx,chY,r+16)) G.q.lock=false; return; }
-          if(anySegHit(hands,c.x,chY,r+16)){
-            G.q.done=true; G.q.doneAt=now;
-            if(i===G.q.ok){ G.ok++; cheer(); setState('정답! '+G.q.target.l+'! 참 잘했어요! 🎉'); G.fx.push(...burst26(c.x,chY,'#93D693')); G.rings.push({x:c.x,y:chY,t:now,r}); }
-            else{ beep(300,0.18); setState('아쉬워요, 다시 들어볼까요? 😊'); }
-            G.round++; $('cNum').textContent=G.round+'/'+ROUNDS;
-            setTimeout(()=>{ if(G.round>=ROUNDS) this.finish(); else gen(); },1000);
-          }
-        }
-      });
-      drawFx(G,now);
-    },
-    finish(){ if(G.done) return; G.done=true; const isNew=recordBest('phonics',G.ok); showResult({num:G.ok+'/'+ROUNDS,sub:'문제 맞혔어요! 🐹'+(isNew?' 🏆 신기록!':''),voice:ROUNDS+'문제 중에 '+G.ok+'개 맞혔어요! Nice phonics!'}); }
-  };
-})();
+GAME.phonics=makeQuiz({
+  key:'phonics', accent:'#E0BE5E', emoji:'🐹', praise:'Nice phonics!',
+  pool:PHON, idOf:p=>p.w, distinctBy:p=>p.l,      // 보기는 '글자'라서 글자 기준으로 겹치지 않게 뽑는다
+  intro:{title:'파닉스 두더지 🐹',desc:'그림과 단어를 보고 <b>시작하는 글자 두더지를 콕!</b><br>단어 50개 중에서 10문제 도전!'},
+  speak:t=>say(t.w+'! What letter does it start with?',true),
+  hint:t=>t.e,
+  drawItem:(v,x,y,r,st)=>{
+    ctx.save(); ctx.fillStyle='#c9a05a';
+    ctx.beginPath(); ctx.ellipse(x,y+r*0.55,r*1.05,r*0.42,0,0,Math.PI*2); ctx.fill(); ctx.restore();
+    bubble(x,y,r,st,'#FFE39A');
+    ctx.save(); ctx.font='900 '+Math.round(r*0.9)+'px Pretendard'; ctx.fillStyle='#5c3a24';
+    ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(v.l,x,y+2); ctx.restore(); },
+  okMsg:t=>'정답! '+t.l+'! '+t.w+' 🎉',
+  ngMsg:t=>t.w+' 는 '+t.l+' 로 시작해요 😊'
+});
 
 /* ---------- 🎨 컬러 점프 ---------- */
-GAME.color=(()=>{
-  const G={};
-  const ROUNDS=6;
-  const COLORS=[{name:'red',hex:'#E85A5A'},{name:'blue',hex:'#3E9BDB'},{name:'yellow',hex:'#E8C23E'},
-    {name:'green',hex:'#5AB86E'},{name:'purple',hex:'#9B7FD4'},{name:'orange',hex:'#E8923E'},
-    {name:'pink',hex:'#E87FB0'},{name:'brown',hex:'#9a6a3a'}];
-  function layout4(){
-    const r=Math.max(48,Math.min(map.W,map.H)/7);
-    const pts=[];
-    for(let i=0;i<4;i++){
-      let placed=null;
-      for(let t=0;t<300;t++){
-        const x=r+20+Math.random()*(map.W-2*(r+20));
-        const y=map.H*0.16+r+Math.random()*(map.H*0.5-2*r);
-        if(pts.every(q=>Math.hypot(q.x-x,q.y-y)>=r*2.3)){ placed={x,y}; break; }
-      }
-      if(!placed){
-        const cols=2, cellW=(map.W-40)/cols, cellH=(map.H*0.5)/2;
-        placed={x:20+cellW*((i%cols)+0.5), y:map.H*0.16+cellH*(Math.floor(i/cols)+0.5)};
-      }
-      pts.push({x:placed.x,y:placed.y,r});
-    }
-    return pts;
-  }
-  function gen(){
-    const pool=COLORS.slice();
-    for(let i=pool.length-1;i>0;i--){ const j=(Math.random()*(i+1))|0; [pool[i],pool[j]]=[pool[j],pool[i]]; }
-    const four=pool.slice(0,4);
-    const okIdx=(Math.random()*4)|0;
-    const pts=layout4();
-    G.q={items:four.map((c,i)=>({name:c.name,hex:c.hex,x:pts[i].x,y:pts[i].y,r:pts[i].r,done:false})),okIdx,lock:true,doneAll:false};
-    say('Touch '+four[okIdx].name+'!',true);
-  }
-  return {
-    key:'color', hud:{counter:true,end:true},
-    intro:{title:'컬러 점프 🎨',desc:'영어 색깔 이름을 듣고 <b>맞는 색을 손으로 콕!</b><br>6문제 도전!'},
-    start(){ G.round=0; G.ok=0; G.fx=[]; G.rings=[]; G.done=false; gen(); $('cNum').textContent='0'; $('cLbl').textContent='문제'; },
-    end(){ this.finish(); },
-    frame(lms){
-      const now=performance.now();
-      let hands=[];
-      if(lms){ drawPose(lms,'#B79AE8'); hands=hands2(lms); drawHandGlow(hands,'#B79AE8'); } else setState('몸이 보이게 서 주세요');
-      G.q.items.forEach((c,i)=>{
-        const isCorrectPick=G.q.doneAll&&i===G.q.okIdx;
-        const pop=isCorrectPick?1+Math.sin(Math.min(1,(now-G.q.doneAt)/260)*Math.PI)*0.24:1;
-        ctx.save(); ctx.fillStyle=c.hex; ctx.shadowBlur=12; ctx.shadowColor='rgba(0,0,0,.2)';
-        ctx.beginPath(); ctx.arc(c.x,c.y,c.r*pop,0,Math.PI*2); ctx.fill(); ctx.shadowBlur=0;
-        ctx.lineWidth=5; ctx.strokeStyle=isCorrectPick?'#fff':'rgba(255,255,255,.6)'; ctx.stroke();
-        ctx.restore();
-        if(hands.length&&!G.q.doneAll){
-          const near=anyNear(hands,c.x,c.y,c.r+16);
-          if(G.q.lock){ if(!near) G.q.lock=false; return; }
-          if(anySegHit(hands,c.x,c.y,c.r+16)){
-            G.q.doneAll=true; G.q.doneAt=now;
-            if(i===G.q.okIdx){ G.ok++; cheer(); setState('Yes! '+c.name+'! 참 잘했어요! 🎉'); G.fx.push(...burst26(c.x,c.y,'#93D693')); G.rings.push({x:c.x,y:c.y,t:now,r:c.r}); }
-            else{ beep(300,0.18); setState('아쉬워요, 다시 들어볼까요? 😊'); }
-            G.round++; $('cNum').textContent=G.round+'/'+ROUNDS;
-            setTimeout(()=>{ if(G.round>=ROUNDS) this.finish(); else gen(); },1000);
-          }
-        }
-      });
-      drawFx(G,now);
-    },
-    finish(){ if(G.done) return; G.done=true; const isNew=recordBest('color',G.ok); showResult({num:G.ok+'/'+ROUNDS,sub:'문제 맞혔어요! 🎨'+(isNew?' 🏆 신기록!':''),voice:ROUNDS+'문제 중에 '+G.ok+'개 맞혔어요! Colorful!'}); }
-  };
-})();
+GAME.color=makeQuiz({
+  key:'color', accent:'#B79AE8', emoji:'🎨', praise:'Colorful!',
+  pool:COLORS, idOf:c=>c.name, distinctBy:c=>c.name,
+  choices:round=>round<3?3:(round<7?4:5),        // 색은 처음부터 3개, 뒤로 갈수록 5개
+  intro:{title:'컬러 점프 🎨',desc:'영어 색깔 이름을 듣고 <b>맞는 색을 손으로 콕!</b><br>11가지 색으로 10문제 도전!'},
+  speak:t=>say('Touch '+t.name+'!',true),
+  hint:()=>'🎨',
+  drawItem:(c,x,y,r,st)=>{
+    ctx.save(); ctx.fillStyle=c.hex; ctx.shadowBlur=12; ctx.shadowColor='rgba(0,0,0,.22)';
+    ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill(); ctx.shadowBlur=0;
+    ctx.lineWidth=6;
+    ctx.strokeStyle=st.isOk?'#2F9E5A':(st.wrongPick?'#E04B4B':(c.ring||'rgba(255,255,255,.75)'));
+    ctx.stroke(); ctx.restore(); },
+  okMsg:t=>'Yes! '+t.name+'! 참 잘했어요! 🎉',
+  ngMsg:t=>'정답은 '+t.name+' 였어요 😊'
+});
 
 /* ---------- 🙆 바디파츠 사이먼(TPR) ---------- */
 GAME.simon=(()=>{
   const G={};
-  const ROUNDS=6, HOLD=0.7, RTIME=9;
+  const HOLD=0.7, RTIME=10;
+  const d=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+  const seen=(l,arr)=>arr.every(i=>l[i]&&visOf(l[i])>0.3);
+  /* 판정은 모두 '관절 사이 거리' 기반 — 카메라 좌우반전·전후면 전환에 영향받지 않는다.
+     needs = 그 동작을 판정하려면 보여야 하는 관절 */
   const ACTIONS=[
-    {label:'Touch your head!',ko:'머리 만지기',check(lms){
-      if(visOf(lms[0])<0.3||visOf(lms[15])<0.3||visOf(lms[16])<0.3) return false;
-      const d1=Math.hypot(lms[15].x-lms[0].x,lms[15].y-lms[0].y), d2=Math.hypot(lms[16].x-lms[0].x,lms[16].y-lms[0].y);
-      return Math.min(d1,d2)<0.14;
-    }},
-    {label:'Touch your shoulders!',ko:'어깨 만지기',check(lms){
-      if(visOf(lms[11])<0.3||visOf(lms[12])<0.3) return false;
-      const dL=Math.hypot(lms[15].x-lms[11].x,lms[15].y-lms[11].y), dR=Math.hypot(lms[16].x-lms[12].x,lms[16].y-lms[12].y);
-      return dL<0.14||dR<0.14;
-    }},
-    {label:'Touch your knees!',ko:'무릎 만지기',check(lms){
-      if(visOf(lms[25])<0.3||visOf(lms[26])<0.3) return false;
-      const dL=Math.hypot(lms[15].x-lms[25].x,lms[15].y-lms[25].y), dR=Math.hypot(lms[16].x-lms[26].x,lms[16].y-lms[26].y);
-      return dL<0.15||dR<0.15;
-    }},
-    {label:'Touch your toes!',ko:'발끝 만지기',check(lms){
-      if(visOf(lms[27])<0.3||visOf(lms[28])<0.3) return false;
-      const wristY=Math.max(lms[15].y,lms[16].y), ankleY=(lms[27].y+lms[28].y)/2;
-      return wristY>ankleY-0.1;
-    }},
-    {label:'Raise your hands!',ko:'만세하기',check(lms){
-      if(visOf(lms[15])<0.3||visOf(lms[16])<0.3) return false;
-      const headY=visOf(lms[0])>0.3?lms[0].y:0.2;
-      return lms[15].y<headY&&lms[16].y<headY;
-    }},
-    {label:'Touch your tummy!',ko:'배 만지기',check(lms){
-      if(visOf(lms[11])<0.3||visOf(lms[23])<0.3) return false;
-      const shY=(lms[11].y+lms[12].y)/2, hipY=(lms[23].y+lms[24].y)/2, cx2=(lms[11].x+lms[12].x)/2, midY=(shY+hipY)/2;
-      const dL=Math.hypot(lms[15].x-cx2,lms[15].y-midY), dR=Math.hypot(lms[16].x-cx2,lms[16].y-midY);
-      return dL<0.16||dR<0.16;
-    }}
+    {id:'head',label:'Touch your head!',ko:'머리를 만져요',needs:[0,15,16],
+      check:l=>Math.min(d(l[15],l[0]),d(l[16],l[0]))<0.13},   // 만세와 구분되게 조임
+    {id:'shoulders',label:'Touch your shoulders!',ko:'어깨를 만져요',needs:[11,12,15,16],
+      check:l=>d(l[15],l[11])<0.15||d(l[16],l[12])<0.15},
+    {id:'knees',label:'Touch your knees!',ko:'무릎을 만져요',needs:[25,26,15,16],
+      check:l=>d(l[15],l[25])<0.16||d(l[16],l[26])<0.16},
+    {id:'toes',label:'Touch your toes!',ko:'발끝을 만져요',needs:[27,28,15,16],
+      check:l=>Math.max(l[15].y,l[16].y)>(l[27].y+l[28].y)/2-0.1},
+    {id:'up',label:'Raise your hands!',ko:'두 손 번쩍 만세!',needs:[0,15,16],
+      check:l=>l[15].y<l[0].y&&l[16].y<l[0].y},
+    {id:'tummy',label:'Touch your tummy!',ko:'배를 만져요',needs:[11,12,23,24,15,16],
+      // 어깨/가슴을 만진 걸 '배'로 쳐주면 바디파츠를 잘못 가르치게 된다 →
+      // 몸통 한가운데 + 어깨보다 확실히 아래, 골반보다 위일 것
+      check:l=>{ const shY=(l[11].y+l[12].y)/2, hipY=(l[23].y+l[24].y)/2;
+        const p={x:(l[11].x+l[12].x)/2, y:(shY+hipY)/2};
+        const near=w=>d(w,p)<0.12 && w.y>shY+(hipY-shY)*0.35 && w.y<hipY;
+        return near(l[15])||near(l[16]); }},
+    {id:'ears',label:'Touch your ears!',ko:'두 귀를 만져요',needs:[7,8,15,16],
+      check:l=>d(l[15],l[7])<0.15&&d(l[16],l[8])<0.15},
+    {id:'clap',label:'Clap your hands!',ko:'손뼉을 짝!',needs:[15,16],
+      check:l=>d(l[15],l[16])<0.10},
+    {id:'wide',label:'Open your arms wide!',ko:'팔을 활짝 벌려요',needs:[11,12,15,16],
+      // 손목이 '몸 중심에서 제 어깨와 같은 쪽으로, 어깨보다 더 바깥'에 있어야 한다.
+      // 가로 거리만 보면 안쪽으로 모은 손(귀 만지기·팔짱)도 통과해버린다.
+      check:l=>{ const cx=(l[11].x+l[12].x)/2;
+        const out=(w,s)=>(w.x-cx)*(s.x-cx)>0 && Math.abs(w.x-cx)>Math.abs(s.x-cx)*1.6;
+        return out(l[15],l[11]) && out(l[16],l[12])
+            && Math.abs(l[15].y-l[11].y)<0.18 && Math.abs(l[16].y-l[12].y)<0.18; }},
+    {id:'hips',label:'Touch your hips!',ko:'양손을 허리에!',needs:[23,24,15,16],
+      // 팔을 그냥 내리고 서 있어도 손목이 골반 옆에 오므로 x가 골반과 겹치는지까지 본다
+      check:l=>Math.abs(l[15].x-l[23].x)<0.06 && Math.abs(l[15].y-l[23].y)<0.12
+            && Math.abs(l[16].x-l[24].x)<0.06 && Math.abs(l[16].y-l[24].y)<0.12},
+    {id:'cross',label:'Cross your arms!',ko:'팔을 X자로 안아요',needs:[11,12,15,16],
+      // 각 손이 '제 어깨보다 반대쪽 어깨에 더 가까워야' 진짜 팔짱
+      check:l=>d(l[15],l[12])<d(l[15],l[11]) && d(l[16],l[11])<d(l[16],l[12])
+            && d(l[15],l[12])<0.15 && d(l[16],l[11])<0.15},
+    {id:'onehand',label:'One hand up!',ko:'한 손만 번쩍!',needs:[0,11,12,15,16],
+      check:l=>{ const h=l[0].y, a=l[15].y<h, b=l[16].y<h;
+        return (a&&!b&&l[16].y>l[12].y)||(b&&!a&&l[15].y>l[11].y); }}
   ];
+  /* 12개를 섞어 큐에 넣고 10개를 뽑는다 → 한 판 안에서는 절대 같은 동작이 두 번 안 나온다.
+     보이지 않는 관절이 필요한 동작(발끝인데 발이 화면 밖)은 뒤로 미룬다. */
   function pick(){
-    let idx; do{ idx=(Math.random()*ACTIONS.length)|0; }while(idx===G.lastIdx&&ACTIONS.length>1);
-    G.lastIdx=idx; G.action=ACTIONS[idx]; G.holdT=0; G.roundStart=performance.now(); G.prevT=G.roundStart; G.done=false;
-    say(G.action.label,true);
+    if(!G.queue.length) G.queue=shuffle(ACTIONS.slice());
+    let a=null;
+    for(let t=0;t<G.queue.length;t++){
+      if(!G.lastLms||seen(G.lastLms,G.queue[t].needs)){ a=G.queue.splice(t,1)[0]; break; }
+    }
+    if(!a) a=G.queue.shift();
+    G.action=a; G.holdT=0; G.roundStart=performance.now(); G.prevT=G.roundStart; G.done=false;
+    say(a.label,true);
   }
-  return {
-    key:'simon', hud:{counter:true,end:true},
-    intro:{title:'바디파츠 사이먼 🙆',desc:'영어 지시를 듣고 <b>몸으로 따라해요!</b> Touch your head!<br>6가지 동작 도전!'},
-    start(){ G.round=0; G.ok=0; G.started=false; G.finished=false; pick(); $('cNum').textContent='0'; $('cLbl').textContent='개'; },
-    end(){ this.finish(); },
+  const API={
+    key:'simon', hud:{counter:true,end:true,repeat:true},
+    intro:{title:'바디파츠 사이먼 🙆',desc:'영어 지시를 듣고 <b>몸으로 따라해요!</b> Touch your head!<br>동작 12가지 중에서 10개 도전!'},
+    start(){ G.round=0; G.ok=0; G.started=false; G.finished=false; G.lastLms=null;
+      G.queue=shuffle(ACTIONS.slice()); pick();
+      $('cNum').textContent='0/'+ROUNDS; $('cLbl').textContent='동작'; },
+    end(){ API.finish(); },
+    repeat(){ if(G.action) say(G.action.label,true); },
     frame(lms){
       const now=performance.now();
-      // 카운트다운이 끝난 첫 프레임에 첫 라운드 시계를 리셋(카운트다운이 RTIME을 잠식하지 않게)
+      // 카운트다운이 끝난 첫 프레임에 시계를 리셋(카운트다운이 제한시간을 잠식하지 않게)
       if(!G.started){ G.started=true; G.roundStart=now; G.prevT=now; }
       const dt=Math.min(0.1,Math.max(0.001,(now-G.prevT)/1000)); G.prevT=now;
       if(!lms){ setState('전신이 보이게 서 주세요'); return; }
+      G.lastLms=lms;
       drawPose(lms,'#8FC4E8');
       if(G.done) return;
-      ctx.save(); ctx.font='900 '+Math.max(20,map.W/13)+'px Pretendard'; ctx.fillStyle='#2a5a7a'; ctx.textAlign='center'; ctx.textBaseline='middle';
-      ctx.fillText(G.action.label,map.W/2,map.H*0.2); ctx.restore();
+      const B=band();
+      ctx.save();
+      ctx.font='900 '+Math.max(19,Math.min(map.W/13,B.h/12))+'px Pretendard';
+      ctx.fillStyle='#2a5a7a'; ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.lineWidth=6; ctx.strokeStyle='rgba(255,255,255,.85)'; ctx.lineJoin='round';
+      const ly=B.t+B.h*0.1;
+      ctx.strokeText(G.action.label,map.W/2,ly); ctx.fillText(G.action.label,map.W/2,ly);
+      ctx.restore();
       const ok=G.action.check(lms);
-      if(ok){ G.holdT+=dt; setState(G.holdT>=HOLD?'좋아요! 🎉':'유지해요…'); }
-      else{ G.holdT=Math.max(0,G.holdT-dt*1.5); setState(G.action.ko+' 해봐요!'); }
+      if(ok){ G.holdT+=dt; setState(G.holdT>=HOLD?'좋아요! 🎉':'그대로 유지해요…'); }
+      else{ G.holdT=Math.max(0,G.holdT-dt*1.5); setState(G.action.ko); }
+      // 유지 진행 막대 — 언제 성공하는지 눈으로 보이게
+      const bw=Math.min(map.W*0.55,300), bx=(map.W-bw)/2, by=ly+Math.max(20,map.W/22);
+      ctx.save();
+      ctx.fillStyle='rgba(255,255,255,.8)'; rrCtx(bx,by,bw,12,6); ctx.fill();
+      ctx.fillStyle='#5AB86E'; rrCtx(bx,by,bw*Math.min(1,G.holdT/HOLD),12,6); ctx.fill();
+      ctx.restore();
       const elapsed=(now-G.roundStart)/1000;
       if(G.holdT>=HOLD){
         G.done=true; G.ok++; G.round++;
-        const n=$('cNum'); n.textContent=G.ok; n.classList.remove('pop'); void n.offsetWidth; n.classList.add('pop');
+        $('cNum').textContent=G.round+'/'+ROUNDS;
+        const n=$('cNum'); n.classList.remove('pop'); void n.offsetWidth; n.classList.add('pop');
         beep(760,0.14); buzz(30); cheer();
-        setTimeout(()=>{ if(G.round>=ROUNDS) this.finish(); else pick(); },900);
+        setTimeout(()=>{ if(G.finished||current!==API) return;
+          if(G.round>=ROUNDS) API.finish(); else pick(); },900);
       }else if(elapsed>RTIME){
         G.done=true; G.round++;
+        $('cNum').textContent=G.round+'/'+ROUNDS;
         setState('다음 동작으로 넘어가요!');
-        setTimeout(()=>{ if(G.round>=ROUNDS) this.finish(); else pick(); },600);
+        setTimeout(()=>{ if(G.finished||current!==API) return;
+          if(G.round>=ROUNDS) API.finish(); else pick(); },700);
       }
     },
-    finish(){ if(G.finished) return; G.finished=true; const isNew=recordBest('simon',G.ok); showResult({num:G.ok+'/'+ROUNDS,sub:'동작 성공! 🙆'+(isNew?' 🏆 신기록!':''),voice:ROUNDS+'개 중에 '+G.ok+'개 성공했어요! Well done!'}); }
+    finish(){ if(G.finished) return; G.finished=true;
+      const isNew=recordBest('simon',G.ok);
+      showResult({num:G.ok,total:ROUNDS,numTxt:G.ok+'/'+ROUNDS,
+        sub:'동작 성공! 🙆'+(isNew?' 🏆 신기록!':''),
+        voice:ROUNDS+'개 중에 '+G.ok+'개 성공했어요! Well done!'});
+    },
+    _dbg(){ return G; }, _actions:ACTIONS        // 자동 점검용
   };
+  return API;
 })();
 
-/* ---------- 🔤 스펠링 콕콕(알파벳 순서대로 터치) ---------- */
+/* ---------- 🔡 스펠링 콕콕(알파벳 순서대로 터치) ---------- */
 GAME.spell=(()=>{
   const G={};
-  const WORDS=['CAT','DOG','SUN','PIG','COW','MILK','FISH','BIRD','STAR','BOOK','TREE','BALL','HAT','CUP','BUS'];
-  function layout(word){
-    const N=word.length;
-    const r=Math.max(36,Math.min(map.W,map.H)/(N+5));
-    const minD=r*2.3;
-    const x0=r+18, x1=map.W-r-18, y0=map.H*0.14+r, y1=map.H*0.70-r;
-    const pts=[];
-    for(let i=0;i<N;i++){
-      let placed=null;
-      for(let t=0;t<300;t++){
-        const x=x0+Math.random()*Math.max(1,x1-x0);
-        const y=y0+Math.random()*Math.max(1,y1-y0);
-        if(pts.every(q=>Math.hypot(q.x-x,q.y-y)>=minD)){ placed={x,y}; break; }
-      }
-      if(!placed){
-        const cols=3, rows=Math.ceil(N/cols);
-        const cellW=(x1-x0)/cols, cellH=(y1-y0)/rows;
-        const cIdx=i%cols, rIdx=Math.floor(i/cols);
-        placed={x:x0+cellW*(cIdx+0.5), y:y0+cellH*(rIdx+0.5)};
-      }
-      pts.push({x:placed.x,y:placed.y,r,ch:word[i],n:i+1,done:false,lock:true});
-    }
-    return pts;
+  const WORDS=[ /* 55단어 — 그림을 보고 철자를 맞춘다 */
+    {w:'CAT',e:'🐱'},{w:'DOG',e:'🐶'},{w:'PIG',e:'🐷'},{w:'COW',e:'🐮'},{w:'SUN',e:'☀️'},{w:'BEE',e:'🐝'},
+    {w:'EGG',e:'🥚'},{w:'BUS',e:'🚌'},{w:'CAR',e:'🚗'},{w:'HAT',e:'🎩'},{w:'CUP',e:'🥤'},{w:'KEY',e:'🔑'},
+    {w:'BOX',e:'📦'},{w:'FOX',e:'🦊'},{w:'BED',e:'🛏️'},{w:'PEN',e:'🖊️'},{w:'VAN',e:'🚐'},{w:'OWL',e:'🦉'},
+    {w:'ANT',e:'🐜'},{w:'BAG',e:'🎒'},{w:'CAP',e:'🧢'},
+    {w:'MILK',e:'🥛'},{w:'FISH',e:'🐟'},{w:'BIRD',e:'🐦'},{w:'STAR',e:'⭐'},{w:'BOOK',e:'📖'},{w:'TREE',e:'🌳'},
+    {w:'BALL',e:'⚽'},{w:'CAKE',e:'🍰'},{w:'DUCK',e:'🦆'},{w:'FROG',e:'🐸'},{w:'GOAT',e:'🐐'},{w:'HAND',e:'✋'},
+    {w:'LION',e:'🦁'},{w:'MOON',e:'🌙'},{w:'NOSE',e:'👃'},{w:'RAIN',e:'🌧️'},{w:'SHIP',e:'🚢'},{w:'SNOW',e:'❄️'},
+    {w:'BOAT',e:'⛵'},{w:'CORN',e:'🌽'},{w:'DOOR',e:'🚪'},{w:'BEAR',e:'🐻'},{w:'KITE',e:'🪁'},
+    {w:'APPLE',e:'🍎'},{w:'HOUSE',e:'🏠'},{w:'TIGER',e:'🐯'},{w:'TRAIN',e:'🚂'},{w:'CLOUD',e:'☁️'},
+    {w:'HORSE',e:'🐴'},{w:'MOUSE',e:'🐭'},{w:'SHEEP',e:'🐑'},{w:'PIZZA',e:'🍕'},{w:'BREAD',e:'🍞'},{w:'CANDY',e:'🍬'}
+  ];
+  function newWord(){
+    const it=bagNext('spell',WORDS,x=>x.w);
+    const pts=layoutN(it.w.length);
+    G.item=it; G.word=it.w; G.next=1; G.lock=true;
+    G.targets=it.w.split('').map((ch,i)=>({ch,n:i+1,x:pts[i].x,y:pts[i].y,r:pts[i].r,done:false}));
+    $('cLbl').textContent=it.w;
+    say(it.w,true);
   }
-  function newWord(speak){
-    let w; do{ w=WORDS[(Math.random()*WORDS.length)|0]; }while(w===G.lastWord&&WORDS.length>1);
-    G.lastWord=w; G.word=w; G.targets=layout(w); G.next=1;
-    $('cLbl').textContent=w; if(speak!==false) say(w,true);
-  }
-  return {
-    key:'spell', hud:{counter:true,timer:true,end:true},
-    intro:{title:'스펠링 콕콕 🔤',desc:'영어 단어의 <b>알파벳을 순서대로 손으로 콕!</b><br>M-I-L-K 처럼 순서대로 눌러서 단어를 완성해요.<br>25초 동안 몇 단어나 완성할까요?'},
-    start(){ G.sets=0; G.endAt=0; G.spoke=false; G.done=false; newWord(false);
-      $('cNum').textContent='0'; say('단어의 알파벳을 순서대로 콕콕 눌러봐요!'); },
-    end(){ this.finish(); },
+  const API={
+    key:'spell', hud:{counter:true,end:true,repeat:true},
+    intro:{title:'스펠링 콕콕 🔡',desc:'그림을 보고 <b>알파벳을 순서대로 손으로 콕!</b><br>C-A-T 처럼 차례로 눌러 단어를 완성해요.<br>단어 55개 중에서 10단어 도전!'},
+    start(){ G.round=0; G.ok=0; G.miss=0; G.fx=[]; G.rings=[]; G.done=false; G.pending=false;
+      $('cNum').textContent='0/'+ROUNDS; newWord(); },
+    end(){ API.finish(); },
+    repeat(){ if(G.word) say(G.word,true); },
     frame(lms){
-      const now=performance.now();
-      // 카운트다운이 끝난 첫 프레임에 타이머 시작 + 첫 단어 발음(안내 문장에 안 잘리게)
-      if(!G.endAt){ G.endAt=now+DUR*1000; }
-      if(!G.spoke){ G.spoke=true; say(G.word,true); }
-      const remain=Math.max(0,(G.endAt-now)/1000);
-      $('timerVal').textContent=Math.ceil(remain);
-      if(remain<=0){ this.finish(); return; }
-      let hands=[];
-      if(lms){ drawPose(lms,'#E89A9A'); hands=hands2(lms); drawHandGlow(hands,'#E89A9A'); } else setState('몸이 보이게 서 주세요');
-      let done=false;
+      const now=performance.now(); let hands=[];
+      if(lms){ drawPose(lms,'#F0A8B8'); hands=hands2(lms); drawHandGlow(hands,'#F0A8B8'); }
+      else setState('몸이 보이게 서 주세요');
+      drawHint(G.item.e);
+      // 잠금이 풀리는 프레임에는 판정하지 않는다(위 makeQuiz와 같은 이유)
+      const locked=G.lock;
+      if(G.lock && (!hands.length || !G.targets.some(t=>anyNear(hands,t.x,t.y,t.r+16)))) G.lock=false;
+      let cleared=false;
       G.targets.forEach(t=>{
-        if(t.done||done) return;
+        if(t.done) return;
+        const isNext=(t.n===G.next);
         ctx.save(); ctx.fillStyle='#fff'; ctx.shadowBlur=10; ctx.shadowColor='rgba(0,0,0,.15)';
         ctx.beginPath(); ctx.arc(t.x,t.y,t.r,0,Math.PI*2); ctx.fill(); ctx.shadowBlur=0;
-        ctx.lineWidth=5; ctx.strokeStyle=t.n===G.next?'#E89A9A':'#e5d8c8'; ctx.stroke();
-        ctx.font='900 '+Math.round(t.r*0.9)+'px Pretendard'; ctx.fillStyle=t.n===G.next?'#2a4a4a':'#c9b89a'; ctx.textAlign='center'; ctx.textBaseline='middle';
-        ctx.fillText(t.ch,t.x,t.y+2);
-        if(t.n===G.next){ const k=1+Math.sin(now/160)*0.08; ctx.beginPath(); ctx.arc(t.x,t.y,t.r*k+9,0,Math.PI*2); ctx.strokeStyle='#E89A9A'; ctx.lineWidth=3; ctx.stroke(); }
+        ctx.lineWidth=6; ctx.strokeStyle=isNext?'#E8608A':'#e5d8c8'; ctx.stroke();
+        ctx.font='900 '+Math.round(t.r*0.92)+'px Pretendard'; ctx.fillStyle=isNext?'#2a4a4a':'#c9b89a';
+        ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(t.ch,t.x,t.y+2);
+        if(isNext){ const k=1+Math.sin(now/160)*0.08;
+          ctx.beginPath(); ctx.arc(t.x,t.y,t.r*k+9,0,Math.PI*2); ctx.strokeStyle='#E8608A'; ctx.lineWidth=3; ctx.stroke(); }
         ctx.restore();
-        if(hands.length){
-          const near=anyNear(hands,t.x,t.y,t.r+16);
-          if(t.lock){ if(!near) t.lock=false; return; }
-          if(anySegHit(hands,t.x,t.y,t.r+16)){
-            if(t.n===G.next){
-              t.done=true; G.next++;
-              beep(520+t.n*80,0.1); buzz(30);
-              if(G.next>G.word.length){
-                G.sets++; $('cNum').textContent=G.sets;
-                const nn=$('cNum'); nn.classList.remove('pop'); void nn.offsetWidth; nn.classList.add('pop');
-                setState(G.word+' 완성! 🎉'); beep(880,0.16); buzz([0,50,40,50]); cheer();
-                done=true;
-              }else setState(t.ch+'! 다음 글자를 찾아봐요');
-            }else{ setState(G.word[G.next-1]+' 글자를 먼저 눌러요!'); beep(220,0.12); t.lock=true; }
-          }
+        if(!locked&&hands.length&&!G.lock&&!cleared&&anySegHit(hands,t.x,t.y,t.r+16)){
+          if(isNext){
+            t.done=true; G.next++; beep(520+t.n*80,0.1); buzz(30);
+            if(G.next>G.word.length){
+              G.ok++; G.round++; cleared=true;
+              $('cNum').textContent=G.round+'/'+ROUNDS;
+              const nn=$('cNum'); nn.classList.remove('pop'); void nn.offsetWidth; nn.classList.add('pop');
+              setState(G.word+' 완성! 🎉'); cheer(); buzz([0,50,40,50]);
+              G.fx.push(...burst26(t.x,t.y,'#93D693')); G.rings.push({x:t.x,y:t.y,t:now,r:t.r});
+            } else setState(t.ch+'! 다음 글자를 찾아봐요');
+          } else { G.miss++; setState(G.word[G.next-1]+' 를 먼저 눌러요!'); beep(220,0.12); G.lock=true; }
         }
       });
-      if(done) newWord();
+      drawFx(G,now);
+      if(cleared&&!G.pending){
+        G.pending=true;
+        setTimeout(()=>{ G.pending=false;
+          if(G.done||current!==API) return;
+          if(G.round>=ROUNDS) API.finish(); else newWord(); },1200);
+      }
     },
-    finish(){ if(G.done) return; G.done=true; const isNew=recordBest('spell',G.sets); showResult({num:G.sets,sub:'단어 완성했어요! 🔤'+(isNew?' 🏆 신기록!':''),voice:G.sets+'단어 완성했어요! Amazing speller!'}); }
+    finish(){ if(G.done) return; G.done=true;
+      const isNew=recordBest('spell',G.ok);
+      showResult({num:G.ok,total:ROUNDS,numTxt:G.ok+'/'+ROUNDS,
+        sub:'단어 완성했어요! 🔡'+(isNew?' 🏆 신기록!':'')
+          +(G.miss?'<br><span style="font-size:14px;color:#6a9a8a;font-weight:700">순서 실수 '+G.miss+'번</span>':''),
+        voice:G.ok+'단어 완성했어요! Amazing speller!'});
+    },
+    _dbg(){ return G; }        // 자동 점검용
   };
+  return API;
 })();
 
-window.__app={ openIntro, startActivity, goHub, GAME, get current(){ return current; }, get running(){ return running; } };
+window.__app={ openIntro, startActivity, goHub, GAME,
+  get current(){ return current; }, get running(){ return running; },
+  /* 자동 점검용 훅 */
+  _t:{ band, layoutN, bagNext, pickWrong, choiceCount, shuffle, ROUNDS,
+       pools:{LETTERS,PIC,PHON,COLORS}, get map(){ return map; } } };
 </script>
 </body>
 </html>
